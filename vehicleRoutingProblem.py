@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import math
+import math,copy, random
 
-numNode = -1 # 
+numNode = -1 # 100
 numVehicle = -1 # 6 
 capVehicle = -1 # 50000 차량의 최대 적재량
 coord = [] #[i][0]=coord_X, [i][1]=coord_Y 노드의 좌표값
@@ -133,18 +133,18 @@ for i in range(0, numVehicle):
                 minValue = cost[0][vehicle[i][j]]
                 minCostNode = vehicle[i][j]
         tempVehicle.append(minCostNode) 
+        
 
-        for k in range(0, len(vehicle[i])):
+        for k in range(0, len(vehicle[i])-1):
             minValue = 10000000
             minCostNode = 0
             for j in range(0,len(vehicle[i])): 
                 if (vehicle[i][j] not in tempVehicle): # 방문했던 노드와 자기 자신은 방문하지 않음
                     if (cost[tempVehicle[len(tempVehicle)-1]][vehicle[i][j]] < minValue): # tempvehicle의 마지막 노드로 부터 계속 cost가 가장 적은 노드 찾기 
-                        minValue = cost[len(tempVehicle)-1][vehicle[i][j]]
+                        minValue = cost[tempVehicle[len(tempVehicle)-1]][vehicle[i][j]]
                         minCostNode = vehicle[i][j]
             tempVehicle.append(minCostNode) 
-            # print(tempVehicle)
-
+            
         vehicle[i] = tempVehicle           
 """
 랜덤으로 차량에 노드를 추가하는 방법
@@ -154,10 +154,15 @@ for i in range(1, numNode):
 """
 
 # evaluate iniital solution
+ofv = 0
+penaltyM = 10000000
 for i in range(0, numVehicle):
     # calculate volume for each vehicle
     for j in range(0, len(vehicle[i])):
-        vehicleVolume[i] += demand[vehicle[i][j]]               
+        vehicleVolume[i] += demand[vehicle[i][j]]
+
+    if (vehicleVolume[i] > capVehicle): # 차량의 최대 적재량을 넘는 경우 ofv값에 패널티를 부여해서 넘지 않도록 설정함.   
+        ofv = ofv + penaltyM
     # calculate cost for each vehicle
     # 0,[1,2,3],0
     # [0,1,2,3,0]
@@ -184,7 +189,169 @@ print("ofv: ", ofv)
 print("########## initial solution for vrp end ##########")
 
 print("########## improve solution for vrp start ##########")
+# Simulated Annealing 을 사용한 ofv 개선법
+curr_vehicle = copy.deepcopy(vehicle)
+curr_vehicleVolume = copy.deepcopy(vehicleVolume)
+curr_vehicleCost = copy.deepcopy(vehicleCost)
+curr_ofv = copy.deepcopy(ofv)
 
+prev_vehicle = copy.deepcopy(vehicle)
+prev_vehicleVolume = copy.deepcopy(vehicleVolume)
+prev_vehicleCost = copy.deepcopy(vehicleCost)
+prev_ofv = copy.deepcopy(ofv)
+
+best_vehicle = copy.deepcopy(vehicle)
+best_vehicleVolume = copy.deepcopy(vehicleVolume)
+best_vehicleCost = copy.deepcopy(vehicleCost)
+best_ofv = copy.deepcopy(ofv)
+
+curr_temperatrue = 3000
+stop_temperatrue = 1
+curr_iteration = 0
+stop_iteration = 1000
+cooling = 0.9
+
+
+while (curr_temperatrue > stop_temperatrue):
+    print("current temperature : ", curr_temperatrue)
+    while (stop_iteration > curr_iteration): # insert/swap 수행 횟수
+        curr_iteration = curr_iteration + 1
+        if(random.random() < 0.5):
+            #swap
+            idx1 = [] # node1 [vehIdx, nodeIdx] 차량번호, 노드 번호
+            temp = random.randint(0, numVehicle-1)
+            while(len(curr_vehicle[temp]) == 0):
+                temp = random.randint(0, numVehicle-1)
+            idx1.append(temp)
+            idx1.append(random.randint(0, len(curr_vehicle[idx1[0]])-1))
+ 
+            idx2 = [] # node2 [vehIdx, nodeIdx]
+            temp = random.randint(0, numVehicle-1)
+            while(len(curr_vehicle[temp]) == 0):
+                temp = random.randint(0, numVehicle-1)
+            idx2.append(temp)
+            idx2.append(random.randint(0, len(curr_vehicle[idx2[0]])-1))
+
+            if(idx1[0]==idx2[0] and idx1[1]==idx2[1]): # 노드가 똑같은 경우는 swap 실행안함.
+                continue 
+
+            node1 = curr_vehicle[idx1[0]][idx1[1]]
+            node2 = curr_vehicle[idx2[0]][idx2[1]]
+            curr_vehicle[idx1[0]][idx1[1]] = node2
+            curr_vehicle[idx2[0]][idx2[1]] = node1
+
+        else:
+            #insert
+            idx1 = [] # node1 [vehIdx, nodeIdx] 차량번호, 노드 번호
+            temp = random.randint(0, numVehicle-1)
+            while(len(curr_vehicle[temp]) == 0):
+                temp = random.randint(0, numVehicle-1)
+            idx1.append(temp)
+            idx1.append(random.randint(0, len(curr_vehicle[idx1[0]])-1))
+    
+            idx2 = [] # node1 insertion idx [vehIdx, nodeIdx]
+            temp = random.randint(0, numVehicle-1)
+            while(len(curr_vehicle[temp]) == 0 or temp == idx1[0]): 
+                temp = random.randint(0, numVehicle-1)
+            idx2.append(temp)
+            idx2.append(random.randint(0, len(curr_vehicle[idx2[0]])))
+
+            if(idx1[0]==idx2[0] and idx1[1]==idx2[1]):
+                continue
+            
+            node1 = curr_vehicle[idx1[0]][idx1[1]]
+            curr_vehicle[idx1[0]].remove(node1)
+            curr_vehicle[idx2[0]].insert(idx2[1], node1)
+        
+    
+        # evaluate changed curr_solution
+        curr_ofv = 0
+        for i in range(0, numVehicle):
+            curr_vehicleVolume[i] = 0 # initialize
+            for j in range(0, len(curr_vehicle[i])):
+                curr_vehicleVolume[i] += demand[curr_vehicle[i][j]]
+
+            if (curr_vehicleVolume[i] > capVehicle):
+                curr_ofv = curr_ofv + penaltyM
+                
+            curr_vehicleCost[i] = 0
+            if (len(curr_vehicle[i]) == 0):
+                curr_vehicleCost[i] = 0
+            else: 
+                for j in range(0, len(curr_vehicle[i])+1):
+                    if (j==0):
+                        curr_vehicleCost[i] += cost[0][curr_vehicle[i][j]]
+                    elif (j==len(curr_vehicle[i])):
+                        curr_vehicleCost[i] += cost[curr_vehicle[i][j-1]][0]
+                    else:
+                        curr_vehicleCost[i] += cost[curr_vehicle[i][j-1]][curr_vehicle[i][j]]
+
+            curr_ofv += curr_vehicleCost[i]
+        # print(curr_ofv)
+
+        # 계산된 ofv값을 비교하여 더나은 ofv를 구하기 위한 과정
+        diff_prev = prev_ofv - curr_ofv
+        diff_best = best_ofv - curr_ofv
+        if (diff_best > 0 ): 
+            # New best solution has been found
+            print("new best solution! : ", curr_ofv)
+            best_vehicle = copy.deepcopy(curr_vehicle)
+            best_vehicleVolume = copy.deepcopy(curr_vehicleVolume)
+            best_vehicleCost = copy.deepcopy(curr_vehicleCost)
+            best_ofv = copy.deepcopy(curr_ofv)
+
+            prev_vehicle = copy.deepcopy(curr_vehicle)
+            prev_vehicleVolume = copy.deepcopy(curr_vehicleVolume)
+            prev_vehicleCost = copy.deepcopy(curr_vehicleCost)
+            prev_ofv = copy.deepcopy(curr_ofv)
+        
+        elif (diff_prev > 0):
+            # Current solution is better than previous solution
+            prev_vehicle = copy.deepcopy(curr_vehicle)
+            prev_vehicleVolume = copy.deepcopy(curr_vehicleVolume)
+            prev_vehicleCost = copy.deepcopy(curr_vehicleCost)
+            prev_ofv = copy.deepcopy(curr_ofv)
+
+        else:
+            # Current solution is worse than previous solution
+            """
+            # ofv가 안좋아졌음으로 무조건 reject하는 경우
+            curr_vehicle = copy.deepcopy(prev_vehicle)
+            curr_vehicleVolume = copy.deepcopy(prev_vehicleVolume)
+            curr_vehicleCost = copy.deepcopy(prev_vehicleCost)
+            curr_ofv = copy.deepcopy(prev_ofv)
+            """
+
+            # 확률에 따라 나빠진 해에 대해서도 가끔은 탐색을 하기 위함
+            prob = np.exp(diff_prev / curr_temperatrue) # 나빠진 정도가 낮을 때, 현재 온도가 높을때 해를 수용할 확률이 높아짐.
+            if (random.random() < prob):
+                # accepted
+                prev_vehicle = copy.deepcopy(curr_vehicle)
+                prev_vehicleVolume = copy.deepcopy(curr_vehicleVolume)
+                prev_vehicleCost = copy.deepcopy(curr_vehicleCost)
+                prev_ofv = copy.deepcopy(curr_ofv)
+
+            else:
+                # rejected
+                curr_vehicle = copy.deepcopy(prev_vehicle)
+                curr_vehicleVolume = copy.deepcopy(prev_vehicleVolume)
+                curr_vehicleCost = copy.deepcopy(prev_vehicleCost)
+                curr_ofv = copy.deepcopy(prev_ofv)
+
+
+    curr_iteration = 0
+    curr_temperatrue = curr_temperatrue * cooling
+            
+    # best_ofv가 찾아지면 개선된 값을 대입해 다시 수행
+    curr_vehicle = copy.deepcopy(best_vehicle)
+    curr_vehicleVolume = copy.deepcopy(best_vehicleVolume)
+    curr_vehicleCost = copy.deepcopy(best_vehicleCost)
+    curr_ofv = copy.deepcopy(best_ofv)
+
+    prev_vehicle = copy.deepcopy(best_vehicle)
+    prev_vehicleVolume = copy.deepcopy(best_vehicleVolume)
+    prev_vehicleCost = copy.deepcopy(best_vehicleCost)
+    prev_ofv = copy.deepcopy(best_ofv)
 
 
 print("########## improve solution for vrp end ##########")
@@ -195,15 +362,15 @@ colors = ['C0','C1','C2','C3','C4','C5','C6','C7','C8','C9','b','k','m','g','r']
 # reserved
 for i in range(0, numVehicle):
     color = colors[i%13]
-    vehicle[i].insert(0,0)
-    vehicle[i].append(0)
-    for j in range(0, len(vehicle[i])-1):
-        plt.plot(coord[vehicle[i][j]][0], coord[vehicle[i][j]][1],
+    best_vehicle[i].insert(0,0)
+    best_vehicle[i].append(0)
+    for j in range(0, len(best_vehicle[i])-1):
+        plt.plot(coord[best_vehicle[i][j]][0], coord[best_vehicle[i][j]][1],
                  (color+'o'), markersize=2)
-        plt.text(coord[vehicle[i][j]][0], coord[vehicle[i][j]][1],
-                 (int)(vehicle[i][j]), fontsize=8)
-        plt.plot([coord[vehicle[i][j]][0], coord[vehicle[i][j+1]][0]],
-                 [coord[vehicle[i][j]][1], coord[vehicle[i][j+1]][1]],
+        plt.text(coord[best_vehicle[i][j]][0], coord[best_vehicle[i][j]][1],
+                 (int)(best_vehicle[i][j]), fontsize=8)
+        plt.plot([coord[best_vehicle[i][j]][0], coord[best_vehicle[i][j+1]][0]],
+                 [coord[best_vehicle[i][j]][1], coord[best_vehicle[i][j+1]][1]],
                  color, linewidth=0.5)
 plt.show()
 print("########## plot solution end ##########")
